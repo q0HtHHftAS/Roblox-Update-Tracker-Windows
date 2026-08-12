@@ -1,0 +1,17 @@
+.env
+.env.*
+!.env.example
+*.db*
+data.db*
+.bot.lock
+node_modules
+dist
+.freebuff/
+
+# Local/runtime files
+*.log
+*.tmp
+*.bak
+*.swp
+.DS_Store
+Thumbs.db
