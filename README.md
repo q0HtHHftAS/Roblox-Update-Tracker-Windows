@@ -56,7 +56,7 @@ by the author (intended to have 100% uptime):
 
 ## Requirements
 
-- **Node.js 20+**
+- **Node.js 22.12+** (`@discordjs/voice` requires Node `>=22.12`)
 - A Discord bot application (see Installation)
 - For `joinalert`: enable the **Guild Members** intent in your bot settings
   and set `ENABLE_GUILD_MEMBERS_INTENT=true`.
