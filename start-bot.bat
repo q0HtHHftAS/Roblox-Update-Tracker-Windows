@@ -1,5 +1,5 @@
 @echo off
-title Roblox Update Tracker
+title Roblox Update Tracker Bot
 set "PATH=C:\Program Files\nodejs;%PATH%"
 cd /d "%~dp0"
 echo Building Roblox Update Tracker...
@@ -11,7 +11,7 @@ if errorlevel 1 (
   exit /b 1
 )
 echo.
-echo Starting Roblox Update Tracker...
+echo Starting Roblox Update Tracker bot...
 node dist\index.js
 echo.
 echo Bot stopped or crashed. Check the output above.

@@ -1,81 +1,21 @@
-import fs from "fs";
-import path from "path";
 import { client } from "./lib/client";
 import logger from "./lib/logger";
 import config from "./lib/config";
+import { initErrorHandler, reportError } from "./lib/errorReporter";
 import { loadCommands } from "./commands";
 import { loadEvents } from "./events";
 
-// ─── Single-instance lock ───────────────────────────────────────────────────
-// Discord delivers each interaction to exactly one gateway connection. If two
-// instances of this bot connect with the same token, they race on the same
-// interactions: one acknowledges it and the other fails with "Unknown
-// interaction" (10062) / "already acknowledged" (40060). Refuse to start when
-// another instance is already running instead.
-const LOCK_FILE = path.join(__dirname, "..", ".bot.lock");
-
-let lockFd: number | undefined;
-
-function isProcessAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function acquireLock(): boolean {
-  try {
-    lockFd = fs.openSync(LOCK_FILE, "wx");
-    fs.writeSync(lockFd, String(process.pid));
-    return true;
-  } catch (error: any) {
-    if (error?.code !== "EEXIST") throw error;
-    // A lock file already exists — is the owner still running?
-    let ownerPid = 0;
-    try {
-      ownerPid = Number(fs.readFileSync(LOCK_FILE, "utf8"));
-    } catch {
-      // Unreadable/corrupt lock — treat as stale.
-    }
-    if (ownerPid > 0 && isProcessAlive(ownerPid)) {
-      logger.error(
-        `Another instance of the bot is already running (PID ${ownerPid}). Stop it first, then start again.`,
-      );
-      return false;
-    }
-    // Stale lock left by a crashed/killed instance — remove it and try once more.
-    try {
-      fs.unlinkSync(LOCK_FILE);
-    } catch {
-      // ignore
-    }
-    return acquireLock();
-  }
-}
-
-function releaseLock() {
-  try {
-    if (lockFd !== undefined) {
-      fs.closeSync(lockFd);
-      lockFd = undefined;
-    }
-    fs.unlinkSync(LOCK_FILE);
-  } catch {
-    // ignore
-  }
-}
-
 // ─── Global crash safety net ────────────────────────────────────────────────
 // A long-running bot on a flaky network must not die from a single unhandled
-// promise rejection (Discord REST / gateway internals all reject under DNS
-// failures and connect timeouts). Log the stack so the next failure is a
-// breadcrumb instead of a silent death, and keep the process alive for
-// recoverable rejections.
+// promise rejection (Discord REST / gateway / voice internals all reject under
+// DNS failures and connect timeouts). Previously any such rejection silently
+// killed the process (exit code 1, no stack trace in the PM2 logs), causing a
+// crash loop. Log the stack so the next failure is a breadcrumb instead of a
+// silent death, and keep the process alive for recoverable rejections.
 process.on("unhandledRejection", (reason) => {
   const error = reason instanceof Error ? reason : new Error(String(reason));
   logger.error("Unhandled promise rejection:", error);
+  reportError("Unhandled promise rejection", error);
 });
 
 // Synchronous uncaught exceptions leave the process in an unknown state, so
@@ -87,6 +27,7 @@ let uncaughtBurst = 0;
 
 process.on("uncaughtException", (error) => {
   logger.error("Uncaught exception:", error);
+  reportError("Uncaught exception", error);
   const now = Date.now();
   if (now - lastUncaughtAt < 10_000) {
     uncaughtBurst++;
@@ -96,7 +37,6 @@ process.on("uncaughtException", (error) => {
   lastUncaughtAt = now;
   if (uncaughtBurst >= 3) {
     logger.error("Too many uncaught exceptions in a short window — exiting for a clean restart.");
-    releaseLock();
     process.exit(1);
   }
 });
@@ -113,7 +53,6 @@ function shutdown() {
   } catch {
     // ignore
   }
-  releaseLock();
   setTimeout(() => process.exit(0), 1500).unref();
 }
 
@@ -149,9 +88,10 @@ async function loginWithRetry() {
 }
 
 async function start() {
-  if (!acquireLock()) {
-    process.exit(1);
-  }
+  // Attach the bot's own error/warn/rate-limit event handlers (webhook
+  // notifications are throttled + coalesced by the reporter).
+  initErrorHandler(client);
+
   const commands = await loadCommands();
 
   logger.info(`Loaded ${Object.keys(commands).length} commands: ${Object.keys(commands).join(', ')}`);
