@@ -1,6 +1,7 @@
 import { client } from "../lib/client";
 import db from "../lib/db";
 import logger from "../lib/logger";
+import { getAlerts, invalidateAlerts } from "../lib/dbCache";
 import {
   ActionRowBuilder,
   ButtonBuilder,
@@ -15,70 +16,41 @@ import {
 import type { MessageCreateOptions } from "discord.js";
 import {
   RDD_BASE,
-  ROBLOX_ZBETA_BANNER_URL,
-  ROBLOX_LIVE_BANNER_URL,
-  ROBLOX_HIDDEN_BANNER_URL,
+  ROBLOX_ZBETA_BANNER,
+  ROBLOX_LIVE_BANNER,
 } from "../lib/constants";
 import { interpolateV2Content, sendV2Message } from "../lib/v2Message";
 
+// Alert rows come from the DB cache (see src/lib/dbCache.ts) — the config only
+// changes through slash commands, which invalidate the cache on every write.
 type Alert = {
   channelId: string;
   customContent: string;
 };
-
-function getAlerts(channel: string, guildId?: string) {
-  if (guildId) {
-    return db
-      .prepare(
-        `
-        SELECT channelId, customContent
-        FROM alerts
-        WHERE robloxChannel = ?
-        AND guildId = ?
-        AND enabled = 1
-        `,
-      )
-      .all(channel, guildId) as Alert[];
-  }
-  return db
-    .prepare(
-      `
-      SELECT channelId, customContent
-      FROM alerts
-      WHERE robloxChannel = ?
-      AND enabled = 1
-      `,
-    )
-    .all(channel) as Alert[];
-}
 
 function createTimestamp() {
   return `<t:${Math.floor(Date.now() / 1000)}:f>`;
 }
 
 export function createRobloxUpdateContainer(
-  type: "live" | "pre" | "revert" | "hidden",
+  type: "live" | "pre" | "revert",
   hash: string,
   robloxChannel: string = "LIVE",
   previousVersion?: string,
-): ContainerBuilder {
+): { container: ContainerBuilder; banner: { name: string; file: string } } {
   const nowUnix = Math.floor(Date.now() / 1000);
-  const bannerUrl =
-    type === "hidden"
-      ? ROBLOX_HIDDEN_BANNER_URL
-      : robloxChannel === "LIVE"
-        ? ROBLOX_LIVE_BANNER_URL
-        : ROBLOX_ZBETA_BANNER_URL;
+  const banner =
+    robloxChannel === "LIVE"
+      ? ROBLOX_LIVE_BANNER
+      : ROBLOX_ZBETA_BANNER;
 
-  const galleryItem = new MediaGalleryItemBuilder().setURL(bannerUrl);
+  const galleryItem = new MediaGalleryItemBuilder().setURL(`attachment://${banner.name}`);
   const gallery = new MediaGalleryBuilder().addItems(galleryItem);
 
   let headerContent = `### Live update detected!\n\nA new ROBLOX ${robloxChannel} version is out. Real will be updated shortly.`;
 
   if (type === "pre") {
     headerContent = `### A future Roblox update has been detected!\n\nThis is a future update, no need to worry about Roblox exploits being patched yet.`;
-  } else if (type === "hidden") {
-    headerContent = `### Hidden version detected!\n\nA new ROBLOX **Version-hidden** build was detected. This build is not public yet.`;
   } else if (type === "revert") {
     headerContent = `### 🔄 Update Reverted\n\nThe \`${robloxChannel}\` channel has reverted back to a previous version.`;
   }
@@ -100,7 +72,7 @@ export function createRobloxUpdateContainer(
     `Powered by Diff Team | Channel : ${robloxChannel}`,
   );
 
-  return new ContainerBuilder()
+  const container = new ContainerBuilder()
     .addMediaGalleryComponents(gallery)
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(headerContent))
@@ -110,6 +82,8 @@ export function createRobloxUpdateContainer(
     .addActionRowComponents(actionRow)
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(footerText);
+
+  return { container, banner };
 }
 
 async function sendToChannel(
@@ -130,16 +104,21 @@ async function sendToChannel(
 
   // Components v2 messages cannot use the legacy `content` field — custom
   // content is injected as a TextDisplay above the components (shared helper).
-  const sent = await sendV2Message(channel, payload.components ?? [], content);
+  // Every caller sends Components v2, so there is no legacy path here.
+  const sent = await sendV2Message(channel, payload.components ?? [], content, {
+    files: payload.files,
+  });
   return sent ? channel : null;
 }
 
 async function sendContainerAlert(
   robloxChannel: string,
   container: ContainerBuilder,
+  banner: { name: string; file: string },
   hash: string,
   guildId?: string,
   version?: string,
+  alertType: "update" | "pre" | "revert" = "update",
 ) {
   for (const alert of getAlerts(robloxChannel, guildId)) {
     try {
@@ -147,6 +126,7 @@ async function sendContainerAlert(
         alert,
         {
           components: [container],
+          files: [{ attachment: banner.file, name: banner.name }],
           flags: MessageFlags.IsComponentsV2 as any,
         },
         { hash, robloxChannel, version },
@@ -154,12 +134,13 @@ async function sendContainerAlert(
       if (channel) {
         const guildName = "guild" in channel && channel.guild ? channel.guild.name : "Unknown guild";
         const channelName = "name" in channel ? `#${channel.name}` : alert.channelId;
-        logger.info(`Roblox update [${robloxChannel}] -> ${guildName} ${channelName}`);
+        logger.info(`Roblox ${alertType} [${robloxChannel}] ${hash} -> ${guildName} ${channelName}`);
       }
     } catch (e: any) {
       if (e?.code === 10003) {
         logger.warn(`Channel ${alert.channelId} not found — removing from alerts table`);
         db.prepare(`DELETE FROM alerts WHERE channelId = ?`).run(alert.channelId);
+        invalidateAlerts();
       } else {
         logger.error(`Failed to send alert to ${alert.channelId}, error: ${e}`);
       }
@@ -168,18 +149,13 @@ async function sendContainerAlert(
 }
 
 export async function sendPreUpdate(hash: string, robloxChannel: string, version?: string, guildId?: string) {
-  const container = createRobloxUpdateContainer("pre", hash, robloxChannel);
-  await sendContainerAlert(robloxChannel, container, hash, guildId, version);
-}
-
-export async function sendHiddenUpdate(hash: string, robloxChannel: string, version?: string, guildId?: string) {
-  const container = createRobloxUpdateContainer("hidden", hash, robloxChannel);
-  await sendContainerAlert(robloxChannel, container, hash, guildId, version);
+  const { container, banner } = createRobloxUpdateContainer("pre", hash, robloxChannel);
+  await sendContainerAlert(robloxChannel, container, banner, hash, guildId, version, "pre");
 }
 
 export async function sendUpdate(hash: string, robloxChannel: string, version?: string, guildId?: string) {
-  const container = createRobloxUpdateContainer("live", hash, robloxChannel);
-  await sendContainerAlert(robloxChannel, container, hash, guildId, version);
+  const { container, banner } = createRobloxUpdateContainer("live", hash, robloxChannel);
+  await sendContainerAlert(robloxChannel, container, banner, hash, guildId, version, "update");
 }
 
 export async function sendRevert(
@@ -188,6 +164,6 @@ export async function sendRevert(
   robloxChannel: string,
   guildId?: string,
 ) {
-  const container = createRobloxUpdateContainer("revert", hash, robloxChannel, previousVersion);
-  await sendContainerAlert(robloxChannel, container, hash, guildId);
+  const { container, banner } = createRobloxUpdateContainer("revert", hash, robloxChannel, previousVersion);
+  await sendContainerAlert(robloxChannel, container, banner, hash, guildId, undefined, "revert");
 }

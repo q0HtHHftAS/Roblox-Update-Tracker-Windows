@@ -2,11 +2,10 @@
 .env.*
 !.env.example
 *.db*
-data.db*
-.bot.lock
 node_modules
 dist
 .freebuff/
+.claude/
 
 # Local/runtime files
 *.log

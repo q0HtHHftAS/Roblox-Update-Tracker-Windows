@@ -7,7 +7,7 @@ import {
 } from "discord.js";
 
 /**
- * Shared helpers for Components v2 messages (alerts).
+ * Shared helpers for Components v2 messages (alerts, executor status, ...).
  *
  * v2 messages cannot use the legacy `content` field, so custom content must be
  * injected as a TextDisplay above the other components. These helpers centralize
