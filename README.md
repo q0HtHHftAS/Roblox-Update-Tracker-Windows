@@ -20,13 +20,6 @@ This project bundles several features under one bot:
 - **Member-join notifications** — sends a mention + embed whenever a new
   member joins the server.
 
-## Add to your server
-
-If you do not want to host your own instance, the bot is also hosted and managed
-by the author (intended to have 100% uptime):
-
-> [Authorization Link](https://discord.com/oauth2/authorize?client_id=1526290601476231218)
-
 ## Features
 
 - Monitors Roblox `LIVE` and `ZBeta` channels.
