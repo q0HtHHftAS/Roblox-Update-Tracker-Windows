@@ -1,163 +1,147 @@
 # Roblox Update Tracker
 
-A Discord bot that monitors Roblox client versions and tracks the working/patched
-status of Roblox executors. When a new update is detected, the bot sends an
-embed to every channel configured for that Roblox release channel. When an
-executor updates or gets patched, the bot renames its voice/text status channels
-and (optionally) posts an alert embed.
+This bot tracks Roblox client versions and the status of executors.
+An executor is a third-party program that runs scripts in Roblox.
+An embed is a formatted Discord message with title and fields.
+When Roblox releases a new version, the bot sends an embed to each Discord channel that tracks that release channel.
+When an executor changes status, the bot renames the status channels and sends an alert embed if you enabled alerts.
 
-This project bundles several features under one bot:
+The bot provides the functions below:
 
-- **Roblox client monitoring** — polls `clientsettings.roblox.com` for the
-  `LIVE` and `ZBeta` channels, detects new hashes, reverts, and "future" ZBeta
-  releases.
-- **Executor tracking** — polls the [WEAO](https://whatexpsare.online) API every
-  minute and updates status channels + alert messages per executor.
-- **Bot online voice channel** — a 24/7 voice channel the bot joins that
-  displays the current Roblox version (or a custom name).
-- **Protected rooms** — a "honeypot" channel that bans or times out anyone who
-  posts in it.
-- **Member-join notifications** — sends a mention + embed whenever a new
-  member joins the server.
+- Poll clientsettings.roblox.com for the LIVE and ZBeta channels and detect new hashes, reverts, and future ZBeta releases.
+- Poll the WEAO API each minute and update status channels and alert messages for each executor.
+- Join a voice channel 24 hours per day and show the current Roblox version in the channel name.
+- Watch honeypot channels and ban or time out any person who posts in the channels. A honeypot is a channel that traps spammers.
+- Send a welcome mention and embed when a new member joins the server.
 
-## Features
+## Functions in Detail
 
-- Monitors Roblox `LIVE` and `ZBeta` channels.
-- Detects new versions, reverts, and future (ZBeta) releases.
-- Sends Discord embeds with a one-click **Download** button (links to
-  [RDD](https://rdd.weao.gg)).
-- Tracks Roblox executors via the WEAO API — per-executor alerts, voice
-  status channels, and chat (text) status channels.
-- Bot "online" voice channel that mirrors the current Roblox version.
-- Honeypot "protected rooms" that auto-ban or timeout anyone who types in them.
-- Welcome notifications for new members (requires the Guild Members intent).
-- Custom message templates per alert channel with `{hash}`, `{channel}`,
-  `{version}`, and `{date}` placeholders.
-- Discord slash commands for all configuration (no manual DB editing).
-- Optional `ALLOWED_USER_IDS` allowlist to restrict bot usage to specific users.
-- **Anti-spam rate limiting** — each user/command pair has a short cooldown
-  (`COMMAND_COOLDOWN_MS`, default 5s; `?ver` is rate-limited too) so spamming
-  cannot hit Discord's global rate limit or hammer the Roblox API.
-- **Crash-safe error handling** — unhandled rejections, uncaught exceptions,
-  Discord client errors and session invalidation are logged (console + file)
-  and pushed to a developer webhook (`ERROR_WEBHOOK_URL`) with throttling so a
-  burst of failures can never flood the channel.
-- **DB caching** — hot reads (protected-room checks on every message, alert
-  config, version/executor state on every monitoring tick) are served from an
-  in-memory TTL cache with write-through invalidation, and prepared statements
-  are memoized, cutting SQLite work on the hottest paths.
+The bot provides the functions below. Each function runs without manual work after you set the function up. You control each function with slash commands. A slash command is a typed command that starts with /.
+
+- Monitor the Roblox LIVE and ZBeta channels for new versions.
+- Detect new versions, reverts, and future ZBeta releases.
+- Send Discord embeds with a Download button that links to RDD at https://rdd.weao.gg.
+- Track Roblox executors through the WEAO API with alerts, voice status channels, and text status channels.
+- Show the current Roblox version in a voice channel of the bot that stays online.
+- Use honeypot rooms that ban or time out any person who types in the rooms.
+- Send welcome notifications for new members through the Guild Members intent.
+- Support custom message templates for each alert channel with {hash}, {channel}, {version}, and {date}.
+- Support Discord slash commands for all setup with no manual database edits.
+- Restrict bot use with the ALLOWED_USER_IDS allowlist.
+- Limit spam with a short cooldown for each user and command pair through COMMAND_COOLDOWN_MS with default 5000. The ?ver command uses the same limit.
+- Log unhandled rejections, uncaught exceptions, client errors, and session invalidation to the console and to a file. Send the errors to a developer webhook through ERROR_WEBHOOK_URL with throttling.
+- Serve hot reads from a TTL cache in memory with write-through invalidation and reuse prepared statements to reduce SQLite work. A TTL cache is a temporary store that expires after a set time.
 
 ## Requirements
 
-- **Node.js 22.12+** (`@discordjs/voice` requires Node `>=22.12`)
-- A Discord bot application (see Installation)
-- For `joinalert`: enable the **Guild Members** intent in your bot settings
-  and set `ENABLE_GUILD_MEMBERS_INTENT=true`.
-- For `protectroom`: enable the **Ban Members** permission for the bot.
-- For `ex voice` and `ex track voice`: enable **Manage Channels** + **Connect**
-  on the bot in the target category.
+The host that runs the bot must meet the requirements below:
+
+- Run Node.js 22.12 or later for @discordjs/voice.
+- Have a Discord bot application. See Installation for the steps to create the application.
+- Enable the Guild Members intent in the configuration of the bot and set ENABLE_GUILD_MEMBERS_INTENT to true to use joinalert.
+- Grant the Ban Members permission to the bot to use protectroom.
+- Grant the Manage Channels and Connect permissions to the bot in the target category. Use these permissions for voice and track voice channels.
 
 ## Installation
 
-Clone the repository:
+Complete the steps below on the host that runs the bot.
+Do not commit the .env file to the repository. The .env file holds secrets.
+
+1. Clone the repository:
 
 ```bash
 git clone https://github.com/q0HtHHftAS/Roblox-Update-Tracker.git
 cd RobloxUpdateTracker
 ```
 
-1. Install dependencies:
+2. Install dependencies:
 
-   ```bash
-   npm install
-   ```
+```bash
+npm install
+```
 
-2. Create your `.env`:
+3. Create the .env file:
 
-   ```bash
-   cp .env.example .env
-   ```
+```bash
+cp .env.example .env
+```
 
-3. Edit `.env`:
+4. Edit the .env file with the values below. Each row names one variable and states if the variable is required.
 
-   | Variable | Required | Description |
-   |---|---|---|
-   | `DISCORD_BOT_TOKEN` | ✅ | Your bot token. |
-   | `DISCORD_CLIENT_ID` | ✅ | Your bot application ID. |
-   | `DISCORD_GUILD_ID` | ➖ | Comma-separated guild IDs for instant per-guild command registration. Leave empty to register globally. |
+| Variable | Required | Description |
+|---|---|---|
+| DISCORD_BOT_TOKEN | Required | Token of the bot. |
+| DISCORD_CLIENT_ID | Required | Application ID of the bot. |
+| DISCORD_GUILD_ID | Optional | IDs of guilds separated by commas for instant command registration. Leave the value empty to register commands globally. |
+| ENABLE_GUILD_MEMBERS_INTENT | Optional | Set to true to enable the Guild Members intent for /joinalert. |
+| ALLOWED_USER_IDS | Optional | IDs of users separated by commas. If the value is not empty, only the listed users can run slash commands. |
+| CLIENTSETTINGS_BASE | Optional | Base address for Roblox clientsettings. Default is https://clientsettings.roblox.com. |
+| COMMAND_COOLDOWN_MS | Optional | Minimum delay in ms between uses of the same command by the same user. Default is 5000. Set to 0 to turn off the limit. |
+| COOLDOWN_MESSAGE_TTL_MS | Optional | Time in ms that the cooldown warning stays before the bot deletes the warning. Default is 5000. Set to 0 to keep the warning. |
+| ERROR_WEBHOOK_URL | Optional | Discord webhook address where the bot posts an alert when an error occurs. Empty value means log-only mode. |
+| LOG_TO_FILE / LOG_FILE | Optional | Append each log line to a text file. Defaults are true and bot.log. |
 
-   > Guild data cleanup is **fully automatic and membership-based** — it does
-   > not depend on `DISCORD_GUILD_ID` at all. On every boot, the bot wipes all
-   > per-guild data (alerts, executor tracking, bot voice/chat channels, join
-   > alerts, protect-room, verify, bot whitelist) for any guild it is **no
-   > longer a member of** (kicked/left). So to remove a guild entirely, just
-   > remove the bot from that guild — its data is cleaned up on the next boot.
-   > As a safety guard this only runs when the bot is a member of at least one
-   > guild at startup.
-   | `ENABLE_GUILD_MEMBERS_INTENT` | ➖ | `true` to enable the Guild Members intent (required for `/joinalert`). |
-   | `ALLOWED_USER_IDS` | ➖ | Comma-separated user IDs. If non-empty, only these users can run slash commands. |
-   | `CLIENTSETTINGS_BASE` | ➖ | Roblox clientsettings base URL. Defaults to `https://clientsettings.roblox.com`. |
-   | `COMMAND_COOLDOWN_MS` | ➖ | Anti-spam: minimum delay in ms between the same user using the same command (default `5000`). `0` disables it. |
-   | `COOLDOWN_MESSAGE_TTL_MS` | ➖ | How long the cooldown warning message stays before the bot auto-deletes it (default `5000`). `0` keeps it forever. |
-   | `ERROR_WEBHOOK_URL` | ➖ | Discord webhook URL where the bot posts an alert the moment an error/crash occurs. Empty = log-only mode. |
-   | `LOG_TO_FILE` / `LOG_FILE` | ➖ | Append every log line to a text file. Defaults to `true` / `bot.log`. |
+On each boot the bot deletes data of guilds where the bot is no longer a member.
+The bot deletes alerts, executor tracking, voice channels, chat channels, join alerts, protect rooms, and allowlists for those guilds.
+To remove a guild fully, remove the bot from the guild and restart the bot.
+This cleanup runs only when the bot is a member of at least one guild at startup.
 
-4. Register slash commands:
+5. Register slash commands:
 
-   ```bash
-   npm run register-commands
-   ```
+```bash
+npm run register-commands
+```
 
-   When `DISCORD_GUILD_ID` is set, commands are registered per-guild (instant).
-   When empty, they are registered globally (may take up to an hour to propagate).
+If DISCORD_GUILD_ID has values, the bot registers commands for each listed guild at once.
+If DISCORD_GUILD_ID is empty, the bot registers commands globally and registration takes up to one hour.
 
-5. Build and start the bot:
+6. Build and start the bot:
 
-   ```bash
-   npm run build
-   npm run start
-   ```
+```bash
+npm run build
+npm run start
+```
 
-   For development with auto-reload:
+For development with auto-reload, run the command below:
 
-   ```bash
-   npm run dev
-   ```
+```bash
+npm run dev
+```
 
-   For production with `pm2`:
+For production with pm2, run the commands below:
 
-   ```bash
-   npm run pm2:start
-   pm2 save
-   ```
+```bash
+npm run pm2:start
+pm2 save
+```
 
-   `pm2:start` uses `pm2 startOrReload ecosystem.config.js`, so running it
-   again (e.g. after a deploy) will *reload* the existing bot instead of
-   starting a duplicate instance. Run `pm2 save` once after any change to the
-   process list so `pm2 resurrect` (used by the Windows startup script)
-   restores exactly one instance. To fully stop the bot:
+The pm2:start script uses pm2 startOrReload with ecosystem.config.js and reloads the current bot instead of starting a second bot.
+Run pm2 save one time after each change to the process list so pm2 resurrect restores one instance.
+To stop the bot fully, run the command below:
 
-   ```bash
-   pm2 delete roblox-bot
-   ```
+```bash
+pm2 delete roblox-bot
+```
 
-## Commands
+## Roblox Alert Commands
 
-All commands are Discord slash commands. Administrator-only commands are marked
-with 🛡️.
+All commands in this section need administrator rights.
+The commands control update alerts for Roblox release channels.
+Run the commands in the Discord server where you want the alerts.
 
-### 🛡️ `/robloxalert add`
+### /robloxalert add
 
-Enable Roblox update alerts. By default the alert goes to the current text
-channel; pass `discord_channel` to send it somewhere else.
+You need administrator rights to run this command.
+The command enables Roblox update alerts for the server.
+By default the bot sends the alert to the current text channel.
+To send the alert to a different channel, set discord_channel.
+To add custom text before the embed, set message with the placeholders.
 
-Options:
+The command accepts the parameters below:
 
-- `roblox_channel` *(required)* — `LIVE` or `ZBeta`.
-- `discord_channel` *(optional)* — the Discord channel that receives the
-  alerts (default: the current channel).
-- `message` *(optional)* — custom message sent before the embed. Supports the
-  placeholders `{hash}`, `{channel}`, `{version}`, `{date}`.
+- Set roblox_channel to LIVE or ZBeta (required).
+- Set discord_channel to the Discord channel that receives the alerts (uses the current channel by default).
+- Set message to the custom text sent before the embed with {hash}, {channel}, {version}, and {date} (optional).
 
 Example:
 
@@ -165,364 +149,417 @@ Example:
 /robloxalert add roblox_channel:LIVE message:@everyone
 ```
 
-### 🛡️ `/robloxalert remove`
+### /robloxalert remove
 
-Remove alerts for a Roblox channel. By default it targets the current
-channel; pass `discord_channel` to remove from a specific one.
+You need administrator rights to run this command.
+The command stops Roblox update alerts for the server.
+By default the command targets the current channel.
+To stop alerts in a different channel, set discord_channel.
+
+Example:
 
 ```
 /robloxalert remove roblox_channel:LIVE
 ```
 
-### `/robloxalert list`
+### /robloxalert list
 
-List every alert configured in this server.
+Any member can run this command.
+The command lists each alert set in the server.
+The list shows the Roblox channel and the Discord channel for each alert.
+Use /robloxalert add to add a missing alert and use /robloxalert remove to delete an alert.
 
----
+### /ver
 
-### `/ver`
+Any member can run this command.
+The command shows the current clientVersionUpload hash for a Roblox channel.
+The hash is the upload ID that Roblox assigns to the client build.
+If you omit the channel, the bot shows the LIVE channel.
 
-Show the current `clientVersionUpload` hash for a Roblox channel.
+The command accepts the parameters below:
 
-Options:
+- Set channel to LIVE or ZBeta (uses LIVE by default).
 
-- `channel` *(optional)* — `LIVE` (default) or `ZBeta`.
+## Executor Track Commands
 
----
+All commands in this section need administrator rights.
+The commands track executors through the WEAO API.
+The bot updates the display when the version or the status of an executor changes.
 
-### 🛡️ `/ex track add`
+### /ex track add
 
-Track a Roblox executor. There are three display modes:
+You need administrator rights to run this command.
+The command tracks one Roblox executor in the server.
+The bot uses the executor name from the WEAO API as the display name.
+The command supports voice, chat, embed, and alert display modes.
 
-- **Voice** — bot creates a voice channel inside the chosen category and renames
-  it to `<display>` based on the executor's working status.
-- **Chat** — same, but with a text channel.
-- **Embed** — bot sends (or edits) a rich embed in the chosen channel showing the
-  executor's status, version, and Roblox version. Auto-updated on a configurable
-  interval (default 1 minute).
-- **Alert** — bot sends an embed to the chosen channel every time the executor
-  pushes a new version.
+Voice mode creates a voice channel in the set category. The bot renames the channel to show the status of the executor.
+Chat mode creates a text channel and renames the channel in the same way.
+Embed mode sends a rich embed with the status, the version, and the Roblox version. The embed updates on a set interval with default 1m.
+Alert mode sends an embed each time the executor releases a new version.
 
-The executor's name from the WEAO API is used as the display name — no
-separate `display_name` needed.
+The command accepts the parameters below:
 
-Options:
+- Set display to voice, chat, embed, or alert (required).
+- Set executor to the name from the WEAO API (required).
+- Set channel to the text channel for alert or embed mode.
+- Set category to the category where the bot creates the channel for voice or chat mode.
+- Set content to the message template for alert mode with {hash}, {channel}, and {date} (optional).
+- Set interval to the auto-update interval for embed mode (optional). Use values such as 30s, 1m, 5m, or 1h with minimum 10s, maximum 1h, and default 1m.
 
-- `display` *(required)* — `voice`, `chat`, `embed`, or `alert`.
-- `executor` *(required)* — name from the WEAO API (autocompleted).
-- `channel` — text channel for `alert` / `embed` mode.
-- `category` — category for `voice`/`chat` modes (where the bot creates the channel).
-- `content` *(optional)* — message template for `alert` mode. Supports
-  `{hash}`, `{channel}`, `{date}`.
-- `interval` *(optional, embed mode)* — how often the embed auto-updates.
-  Accepts durations like `30s`, `1m`, `5m`, `1h`. Minimum `10s`, maximum `1h`.
-  Defaults to `1m`.
+### /ex track remove
 
-### 🛡️ `/ex track remove`
+You need administrator rights to run this command.
+The command stops tracking for one executor.
+The bot also deletes the channel that the bot created for the tracker.
+The command affects only the current server.
 
-Remove tracking for a single executor (also deletes the auto-created channel).
+The command accepts the parameters below:
 
-Options:
+- Set display to voice, chat, embed, or alert (required).
+- Set executor to the name from the WEAO API (required).
+- Set channel to narrow removal to one channel for alert or embed mode (optional).
 
-- `display` *(required)* — `voice`, `chat`, `embed`, or `alert`.
-- `executor` *(required)* — name from the WEAO API.
-- `channel` *(optional, alert / embed mode)* — narrow removal to one channel.
+### /ex track edit
 
-### 🛡️ `/ex track edit`
+You need administrator rights to run this command.
+The command changes the content or the embed interval of a tracker that already exists.
+The command changes only the parameters that you provide.
+The command works for alert, embed, voice, and chat trackers.
 
-Edit the `content` or embed `interval` of an existing tracker (alert / embed /
-voice / chat). Only the options you provide are changed.
+The command accepts the parameters below:
 
-Options:
+- Set executor to the name from the WEAO API (required).
+- Set content to the new message template for alert or embed mode (optional).
+- Set interval to the new auto-update interval for embed mode (optional).
 
-- `executor` *(required)* — name from the WEAO API.
-- `content` *(optional)* — new message template for alert / embed mode.
-- `interval` *(optional, embed mode)* — new auto-update interval.
+### /ex track list
 
-### 🛡️ `/ex track list`
+You need administrator rights to run this command.
+The command lists each executor tracker set in the server.
+The list groups trackers by display mode.
+Use /ex track add to add a missing tracker and use /ex track remove to delete a tracker.
 
-List every executor tracker configured in this server, grouped by mode.
+### /ex track refresh
 
-### 🛡️ `/ex track refresh`
+You need administrator rights to run this command.
+The command refreshes each executor status channel and chat channel at once.
+The command reads the latest state from the database before the refresh.
+Use this command after you change permissions or categories.
 
-Force-refresh every executor status channel + chat channel immediately.
+## Bot Voice and Chat Commands
 
----
+The commands in this section control the voice channel and the text channel of the bot.
+The voice channel is a channel that the bot joins 24 hours per day.
+The chat channel is a text channel where the channel name mirrors the Roblox version.
 
-### 🛡️ `/ex voice add`
+### /ex voice add
 
-Configure the bot's "online" voice channel.
+You need administrator rights to run this command.
+The command sets the voice channel where the bot stays online.
+The bot joins the channel 24 hours per day.
+If the bot fails to join, the bot retries one time per 15 minutes for each guild.
 
-Options:
+The command accepts the parameters below:
 
-- `mode` *(required)* — `custom` (fixed name) or `roblox-version` (mirrors a
-  Roblox channel's `clientVersionUpload`).
-- `channel` *(optional)* — pick an existing voice channel for the bot to use.
-- `category` *(optional)* — pick a category for the bot to create a new voice
-  channel in.
-- `display_name` *(optional, custom mode)* — the name to display.
-- `roblox_channel` *(optional, roblox-version mode)* — `LIVE` (default) or `ZBeta`.
+- Set mode to custom for a fixed name or to roblox-version to mirror clientVersionUpload (required).
+- Set channel to a voice channel that already exists for the bot to use (optional).
+- Set category to a category where the bot creates a new voice channel (optional).
+- Set display_name to the name to show in custom mode (optional).
+- Set roblox_channel to LIVE or ZBeta in roblox-version mode with default LIVE (optional).
 
-You must provide **either** `channel` **or** `category`.
+Provide channel or category. The bot needs one of the two values to find or create the channel.
 
-The bot will join this voice channel 24/7. Joins that fail are rate-limited
-to one attempt per 15 minutes per guild.
+### /ex voice remove
 
-### 🛡️ `/ex voice remove`
+You need administrator rights to run this command.
+The command stops tracking for the voice channel of the bot.
+The bot leaves the channel and deletes the channel from the server.
+The command affects only the current server.
 
-Stop tracking + leave + delete the bot's voice channel for this server.
+### /ex voice list
 
-### 🛡️ `/ex voice list`
+You need administrator rights to run this command.
+The command shows the current voice configuration of the bot for the server.
+The output includes the mode, the channel, and the Roblox channel.
+Use /ex voice add to change the values and use /ex voice remove to delete the values.
 
-Show the current bot voice configuration for this server.
+### /ex voice refresh
 
-### 🛡️ `/ex voice refresh`
+You need administrator rights to run this command.
+The command refreshes the name and the connection of the voice channel one time.
+The command reads the current Roblox version before the refresh.
+Use this command after you change the mode or the channel.
 
-Force a single refresh of the bot voice channel name + connection.
+### /ex chat add
 
----
+You need administrator rights to run this command.
+The command sets a text channel where the channel name mirrors the Roblox version.
+The channel name updates on each monitoring tick when the Roblox version changes.
+The default tick runs each 60 seconds.
 
-### 💬 `/ex chat add`
+The command accepts the parameters below:
 
-Configure a text channel whose name mirrors a Roblox channel's version
-(`clientVersionUpload`), like `/ex voice` but for chat channels.
+- Set mode to custom for a fixed name or to roblox-version to mirror clientVersionUpload (required).
+- Set channel to a text channel that already exists for the bot to use (optional).
+- Set category to a category where the bot creates a new text channel (optional).
+- Set display_name to the name to show in custom mode (optional).
+- Set roblox_channel to LIVE or ZBeta in roblox-version mode with default LIVE (optional).
 
-Options:
+Provide channel or category. The bot needs one of the two values to find or create the channel.
 
-- `mode` *(required)* — `custom` (fixed name) or `roblox-version` (mirrors a
-  Roblox channel's `clientVersionUpload`).
-- `channel` *(optional)* — pick an existing text channel for the bot to use.
-- `category` *(optional)* — pick a category for the bot to create a new text
-  channel in.
-- `display_name` *(optional, custom mode)* — the name to display.
-- `roblox_channel` *(optional, roblox-version mode)* — `LIVE` (default) or `ZBeta`.
+### /ex chat remove
 
-You must provide **either** `channel` **or** `category`. The channel name is
-refreshed on every monitoring tick (default every 60s) whenever the Roblox
-version changes.
+Any member with administrator rights can run this command.
+The command stops tracking and deletes the chat channel of the bot for the server.
+The command affects only the current server.
+Use /ex chat add to create a new chat channel after removal.
 
-### 💬 `/ex chat remove`
+### /ex chat list
 
-Stop tracking + delete the bot's chat channel for this server.
+Any member with administrator rights can run this command.
+The command shows the current chat configuration of the bot for the server.
+The output includes the mode, the channel, and the Roblox channel.
+Use /ex chat add to change the values and use /ex chat remove to delete the values.
 
-### 💬 `/ex chat list`
+### /ex chat refresh
 
-Show the current bot chat configuration for this server.
+Any member with administrator rights can run this command.
+The command refreshes the name of the chat channel of the bot one time.
+The command reads the current Roblox version before the refresh.
+Use this command after you change the mode or the channel.
 
-### 💬 `/ex chat refresh`
+## Status Commands
 
-Force a single refresh of the bot chat channel name.
+All commands in this section need administrator rights.
+The commands control the rotating presence of the bot.
+Presence is status text shown on the bot profile.
 
----
+### /status add
 
-### 🛡️ `/status add`
+You need administrator rights to run this command.
+The command adds one message to the rotating presence of the bot.
+You can add more than one message and the bot shows each message in turn.
+Each message stays for the set interval before the bot shows the next message.
 
-Add a message to the bot's rotating Discord presence. You can add **multiple**
-messages — the bot cycles through them automatically, showing each one for its
-configured interval.
+The command accepts the parameters below:
 
-Options:
+- Set text to the presence text (required).
+- Set url to the stream address with default https://www.twitch.tv/roblox (optional).
+- Set custom to the custom status shown on the profile card (optional).
+- Set interval to the display time such as 30s, 1m, 5m, or 1h with minimum 5s and default 1m (optional).
 
-- `text` *(required)* — presence text.
-- `url` *(optional)* — stream URL. Defaults to `https://www.twitch.tv/roblox`.
-- `custom` *(optional)* — custom status shown on the profile card (emoji allowed).
-- `interval` *(optional)* — how long this message is shown before the bot
-  switches to the next one. Accepts durations like `30s`, `1m`, `5m`, `1h`
-  (minimum `5s`, default `1m`).
+### /status remove
 
-### 🛡️ `/status remove`
+You need administrator rights to run this command.
+The command deletes each status message and removes the presence of the bot.
+No status shows until you run /status add again.
+Use /status list before removal if you want to keep a copy of the texts.
 
-Clear every configured status message and remove the bot's presence entirely
-(no status is shown until `/status add` is used again).
+### /status list
 
-### 🛡️ `/status list`
+You need administrator rights to run this command.
+The command shows each status message with rotation interval and stream address.
+The list covers all messages set in the server.
+Use /status add to add a message and use /status remove to delete all messages.
 
-Show every configured status message with its rotation interval and stream URL.
+### /status refresh
 
-### 🛡️ `/status refresh`
+You need administrator rights to run this command.
+The command applies the set status of the bot at once.
+The command helps after restarts or failed presence updates.
+Use /status list to make sure that the values are correct before the refresh.
 
-Force the bot to re-apply its configured status immediately.
+## Protect Room Commands
 
----
+All commands in this section need administrator rights.
+The commands control honeypot rooms that trap spammers.
+Guild owners and administrators are exempt from the actions.
 
-### 🛡️ `/protectroom setup`
+### /protectroom setup
 
-Mark the current text channel as a "honeypot". The first message from any
-non-Administrator member will:
+You need administrator rights to run this command.
+The command marks the current text channel as a honeypot.
+The first message from any member without administrator rights starts the action below.
+The bot deletes each message by that user from the last minute across all channels. The bot then bans the user or times out the user for the set duration with default 60 minutes.
 
-1. Delete every message by that user posted in the last minute (across all
-   channels).
-2. Either **ban** the user or **timeout** them for a configurable duration
-   (default `60` minutes).
+The command accepts the parameters below:
 
-Options:
+- Set action to ban or timeout (required).
+- Set timeout_minutes to the duration in minutes from 1 to 40320 with default 60 for timeout action (optional).
 
-- `action` *(required)* — `ban` or `timeout`.
-- `timeout_minutes` *(optional, `timeout` only)* — duration in minutes
-  (1–40320). Defaults to `60`.
+Do not post in a honeypot channel. The bot will ban or time out your account.
 
-Guild owners and Administrators are exempt.
+### /protectroom remove
 
-### 🛡️ `/protectroom remove`
+You need administrator rights to run this command.
+The command removes protection from the current channel.
+Members can post in the channel again without automatic action.
+Use /protectroom view to make sure that the removal worked.
 
-Remove the protection from the current channel.
+### /protectroom view
 
-### 🛡️ `/protectroom view`
+You need administrator rights to run this command.
+The command shows the protection status of the current channel.
+The output states if the channel is protected and which action applies.
+Use /protectroom setup to change the action and use /protectroom remove to stop protection.
 
-Show the current channel's protection status.
+## Join Alert and Utility Commands
 
----
+The commands in this section cover welcome messages and setup helpers.
+Some commands need administrator rights and some commands are open to all members.
+Run /help in Discord to see the full list with short texts.
 
-### 🛡️ `/joinalert add`
+### /joinalert add
 
-Enable a welcome notification whenever a new member joins the server.
+You need administrator rights to run this command.
+The command enables a welcome notification when a new member joins the server.
+The bot sends a mention with an embed to the set channel.
+To use this command, enable the Guild Members intent in the configuration of the bot. Then set ENABLE_GUILD_MEMBERS_INTENT to true in the .env file.
 
-Options:
-
-- `message` *(optional)* — custom text shown after the mention.
+Example:
 
 ```
-/joinalert add message:ยินดีต้อนรับสู่เซิร์ฟเวอร์!
+/joinalert add message:Welcome to the server!
 ```
 
-Requires the **Guild Members** intent to be enabled in your bot settings and
-`ENABLE_GUILD_MEMBERS_INTENT=true` in your `.env`.
+### /joinalert remove
 
-### 🛡️ `/joinalert remove`
+You need administrator rights to run this command.
+The command stops the join notification for the server.
+New members no longer trigger a message.
+Use /joinalert add to enable the notification again.
 
-Disable the join notification for this server.
+### /joinalert list
 
-### 🛡️ `/joinalert list`
+You need administrator rights to run this command.
+The command shows the join channel and the message set for the server.
+The output reflects the current database values.
+Use /joinalert add to change the message and use /joinalert remove to stop the messages.
 
-Show the configured join channel + message.
+### /config
 
----
+You need administrator rights to run this command.
+The command shows an embed with a summary of each value set in the server.
+The bot also deletes database rows that point to channels that no longer exist.
+Use this command to review the full setup in one place.
 
-### ⚙️ `/config`
+### /help
 
-Show an embed summarising every configuration in this server. Also
-auto-cleans DB rows pointing to channels that no longer exist.
+Any member can run this command.
+The command shows each slash command with a short text.
+The list covers all commands available in the server.
+Use the specific list commands such as /robloxalert list for full details.
 
-### `/help`
+### /test
 
-Show every available slash command with a short description.
+You need administrator rights to run this command.
+The command sends a sample alert to make sure that the configuration works.
+Use this command after you set channels to make sure that delivery works.
+The command needs one type value and uses real data where available.
 
----
+The command accepts the parameters below:
 
-### 🛡️ `/test`
+- Set type to roblox-live, roblox-zbeta, or executor-alert (required).
 
-Send a sample alert to verify your setup. Useful after configuring channels.
+The embed uses the current real clientVersionUpload for the Roblox types.
+The executor type uses the first matching WEAO entry or a sample entry.
 
-Options:
+## How the Bot Works
 
-- `type` *(required)* — `roblox-live`, `roblox-zbeta`, or `executor-alert`.
+This section explains the polling loops of the bot.
+Each loop runs on a fixed interval and writes state to the local database.
+Read this section before you change intervals or debug missed alerts.
 
-The embed uses the current real `clientVersionUpload` for the Roblox options,
-and the first matching WEAO entry (or a sample) for the executor option.
+### Roblox Update Loop
 
----
+The bot polls clientsettings.roblox.com/v2/client-version/WindowsPlayer/channel/{LIVE,ZBeta} each 10 seconds.
+If a channel fails 6 polls in a row, the bot slows that channel to one poll per minute until the channel recovers.
+A new hash on LIVE triggers a red embed with title Roblox Update Detected.
+A new hash on ZBeta triggers a yellow embed for a future update. When the same hash later appears on LIVE, the bot marks the hash as released.
+If the bot sees the previous currentVersion again, the bot sends an orange embed for Update Reverted.
+Each embed includes a Download button that links to https://rdd.weao.gg/?channel=...&version=....
 
-## How it works
+### Executor Monitoring Loop
 
-### Roblox update loop
+The bot polls https://whatexpsare.online/api/status/exploits each 60 seconds.
+For each executor with alerts, the bot compares version and updateStatus against executorLastState in the database.
+If the bot finds a new working version, the bot sends an embed with the changelog to each subscribed channel when the changelog is present.
+The bot renames voice and text status channels to show updateStatus.
+A separate scheduler refreshes embed status rows and each row has its own intervalMs set through /ex track add or /ex track edit.
+A light tick runs each 5 seconds to refresh each due row so each embed updates on its own.
 
-- Every **10 seconds** the bot polls
-  `clientsettings.roblox.com/v2/client-version/WindowsPlayer/channel/{LIVE,ZBeta}`.
-  A channel that misses **6 checks in a row** backs off to one check per
-  minute until it recovers (so a locked-down endpoint is not hammered).
-- A new hash on `LIVE` triggers a red "Roblox Update Detected!" embed.
-- A new hash on `ZBeta` triggers a yellow "future update" embed. When the
-  same hash later appears on `LIVE`, it is marked as `released=1` in the DB.
-- If the bot sees the previous `currentVersion` reappear, it sends an orange
-  "Update Reverted" embed.
-- Each embed includes a one-click **Download** button that links to
-  `https://rdd.weao.gg/?channel=...&version=...`.
+### Bot Online Voice
 
-### Executor monitoring loop
+If you set /ex voice, the bot joins the set voice channel 24 hours per day and renames the channel for the set mode.
+Failed joins slow to one attempt per 15 minutes for each guild.
+Voice error events destroy the connection and this behavior prevents process crashes.
+Read the logs if the bot does not stay in the channel.
 
-- Every **60 seconds** the bot polls `https://whatexpsare.online/api/status/exploits`.
-- For each executor the bot has `executorAlerts` for, it compares the
-  `version` + `updateStatus` against `executorLastState` in the DB.
-- If a new working version is detected, an embed is sent to every subscribed
-  channel (changelog included when present).
-- Voice and text status channels are renamed to `<display>` based on
-  `updateStatus`.
-- **Embed Status** channels are refreshed by a separate per-row scheduler.
-  Each embed row has its own `intervalMs` (configurable via `/ex track add` or
-  `/ex track edit`). A lightweight tick checks every 5 seconds which rows are
-  due for a refresh, so each embed updates independently.
+### Protected Rooms
 
-### Bot online voice
+The bot logs each message to messageLog with TTL 2 minutes and deletes old rows each 5 minutes.
+On a message in a protected channel, the bot finds messages of the user from the last minute and deletes all found messages.
+The bot then bans or times out the user.
+Guild owners and administrators are exempt from the actions.
 
-- When `/ex voice` is configured, the bot joins the chosen voice channel
-  24/7 and renames it according to the chosen mode.
-- Failed joins are rate-limited to one attempt per 15 minutes per guild, and
-  voice `error` events destroy the connection (preventing process crashes).
+## Message Placeholders
 
-### Protected rooms
-
-- Every message is logged to `messageLog` (TTL 2 minutes, cleaned up every
-  5 minutes).
-- On a message in a protected channel, the bot looks up the user's last
-  minute of messages, deletes them all, then bans or times out the user.
-- Guild owners and Administrators are exempt.
-
-## Configuration placeholders
-
-The following placeholders can be used in custom messages:
+You can use the placeholders below in custom messages.
+The bot replaces each placeholder when the bot sends the message.
+Use the exact text with braces.
 
 | Placeholder | Replaced with |
 |---|---|
-| `{hash}` | The Roblox `clientVersionUpload` (or executor version). |
-| `{channel}` | The Roblox channel name (`LIVE`, `ZBeta`). |
-| `{version}` | The numeric Roblox version (when available). |
-| `{date}` | A Discord timestamp `<t:...:f>` (or `<t:...:F>` for executor alerts). |
+| {hash} | The Roblox clientVersionUpload or the executor version. |
+| {channel} | The Roblox channel name such as LIVE or ZBeta. |
+| {version} | The numeric Roblox version when available. |
+| {date} | A Discord timestamp such as <t:...:f> or <t:...:F> for executor alerts. |
 
-## Data storage
+## Data Storage
 
-The bot stores its state in a local SQLite database (`data.db`, WAL mode). The
-schema and migrations live in `src/lib/db.ts`. Every bot-managed channel is
-self-healing — if the channel is deleted manually, the bot clears the
-reference on the next pass. `knownVersions` is pruned on boot and every 6h
-(rows older than 90 days, max 500 per channel); `channelState` also keeps the
-numeric Roblox version next to each hash.
+The bot stores state in a local SQLite database in data.db with WAL mode.
+The schema and the migrations live in src/lib/db.ts.
+Each channel that the bot manages heals itself and the bot deletes the reference on the next pass if you deleted the channel manually.
+The bot prunes knownVersions on boot and each 6 hours and keeps rows younger than 90 days with maximum 500 rows for each channel.
+The channelState table also keeps the numeric Roblox version next to each hash.
 
 ## Development
 
-Run in development mode with auto-reload:
+Run the bot in development mode with auto-reload with the command below:
 
 ```bash
 npm run dev
 ```
 
-Lint/typecheck:
+To run lint and typecheck, run the command below:
 
 ```bash
 npm run build
 ```
 
-Tests (`tests/`, run with the built-in Node test runner via `tsx`):
+Tests live in tests and run with the built-in Node test runner through tsx with the command below:
 
 ```bash
 npm test
 ```
 
-Useful paths:
+Useful paths are listed below:
 
-- `src/index.ts` — bootstrap.
-- `src/monitoring/` — update loops.
-- `src/commands/` — slash command handlers.
-- `src/lib/db.ts` — schema and migrations.
+- Open src/index.ts for bootstrap.
+- Open src/monitoring/ for update loops.
+- Open src/commands/ for slash command handlers.
+- Open src/lib/db.ts for schema and migrations.
 
 ## Notes
 
-- Pull requests and issues should be created on GitHub.
-- Do **not** commit your `.env` file. The provided `.gitignore` already
-  excludes it, but double-check before pushing.
-- If you self-host and the bot fails to join the configured voice channel,
-  check the logs — repeated join failures trigger a 15-minute cooldown per
-  guild.
+Pull requests and issues belong on GitHub.
+Do not commit the .env file to the repository. The file holds secrets and the provided .gitignore already excludes the file.
+If you self-host and the bot fails to join the voice channel, read the logs. Repeated join failures start a 15 minute cooldown for each guild.
+Make sure that the file is correct before you push.
 
 ## License
 
-[MIT](LICENSE)
+This project uses the MIT license.
+See LICENSE for the full text.
+When you use the bot, you accept the risk.
